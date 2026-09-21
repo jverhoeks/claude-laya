@@ -9,9 +9,10 @@ Laya judges a short card (hardness, friction, intent, outcome, …). Counts stay
     uv run python analyze.py --limit 50
     uv run python analyze.py
 
-Uses a Laya server at LAYA_API (default http://127.0.0.1:8770) if one is up,
-otherwise loads weights in-process. Parse is threaded (--parse-workers, default 4).
-Predict is serial: one GPU lock. Resume is percentages plus parse/model/rtt p50/p95.
+Loads Laya in-process (no playground). Set LAYA_API=http://127.0.0.1:8770 only
+if you already have a Laya HTTP server running. Parse is threaded
+(--parse-workers, default 4). Predict is serial: one GPU lock. Resume is
+percentages plus parse/model/rtt p50/p95.
 
 Writes claude-laya-out/sessions.jsonl and resume.md (gitignored). Re-runs skip
 unchanged files unless --force. Main transcripts only; agent-* files are folded
@@ -19,11 +20,20 @@ in from <session>/subagents/, not scored on their own.
 """
 from __future__ import annotations
 
+import os
+
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")  # native xet client can stall at 0 bytes
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+_CACHE = os.path.expanduser("~/.cache/huggingface/hub/models--convaiinnovations--laya/snapshots")
+if os.path.isdir(_CACHE):
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 import argparse
 import datetime as dt
 import http.client
 import json
-import os
 import re
 import sys
 import tempfile
@@ -37,7 +47,7 @@ from pathlib import Path
 from queue import Queue
 from threading import Thread
 
-LAYA_API = os.environ.get("LAYA_API", "http://127.0.0.1:8770")
+LAYA_API = os.environ.get("LAYA_API")  # unset → load in-process; do not assume a playground server
 CHECKPOINT = os.environ.get("LAYA_CHECKPOINT", "english")
 
 QUESTIONS = {
@@ -538,34 +548,20 @@ class Laya:
         self._http_or_local()
 
     def _http_or_local(self):
-        u = urllib.parse.urlparse(LAYA_API)
-        try:
-            health = json.load(urllib.request.urlopen(LAYA_API + "/api/health", timeout=3))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
-            health = None
-        if health and (health.get("models") or {}).get(CHECKPOINT) == "ready":
-            self.mode = "http"
-            self.conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=120)
-            print("[laya] using %s (%s ready)" % (LAYA_API, CHECKPOINT), flush=True)
-            return
-        if health and health.get("models"):
-            print("[laya] server is up but %s is %s — waiting" % (CHECKPOINT, health["models"].get(CHECKPOINT)), flush=True)
-            for _ in range(90):
-                time.sleep(2)
-                try:
-                    health = json.load(urllib.request.urlopen(LAYA_API + "/api/health", timeout=3))
-                except (urllib.error.URLError, TimeoutError, OSError):
-                    continue
-                if (health.get("models") or {}).get(CHECKPOINT) == "ready":
-                    self.mode = "http"
-                    self.conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=120)
-                    print("[laya] %s ready" % CHECKPOINT, flush=True)
-                    return
-        print("[laya] no server at %s, loading weights in-process" % LAYA_API, flush=True)
-        os.environ.setdefault("USE_TF", "0")
-        os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
-        os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
-        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+        if LAYA_API:
+            u = urllib.parse.urlparse(LAYA_API)
+            try:
+                health = json.load(urllib.request.urlopen(LAYA_API + "/api/health", timeout=3))
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+                health = None
+            if health and (health.get("models") or {}).get(CHECKPOINT) == "ready":
+                self.mode = "http"
+                self.conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=120)
+                print("[laya] using %s (%s ready)" % (LAYA_API, CHECKPOINT), flush=True)
+                return
+            print("[laya] LAYA_API=%s is not ready, loading in-process" % LAYA_API, flush=True)
+        else:
+            print("[laya] loading weights in-process", flush=True)
         import laya
         self.agent = laya.load("convaiinnovations/laya")
         self.mode = "local"
