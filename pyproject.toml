@@ -1,0 +1,10 @@
+[project]
+name = "claude-laya"
+version = "0"
+description = "Score Claude Code JSONL sessions with local Laya"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["laya>=0.3.4"]
+
+[tool.uv]
+exclude-newer-package = { laya = false }
