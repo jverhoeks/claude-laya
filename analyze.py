@@ -561,11 +561,18 @@ class Laya:
                 return
             print("[laya] LAYA_API=%s is not ready, loading in-process" % LAYA_API, flush=True)
         else:
-            print("[laya] loading weights in-process", flush=True)
+            print("[laya] loading weights in-process (cache hit: 30-90s, no progress bar)", flush=True)
+        if os.path.isdir(_CACHE):
+            print("[laya] using Hugging Face cache at %s" % _CACHE, flush=True)
+        else:
+            print("[laya] first run: downloading ~2.3 GB of weights (HF_HUB_DISABLE_XET=1)", flush=True)
+        t0 = time.perf_counter()
         import laya
+        print("[laya] imported laya %s in %.1fs, building english checkpoint..." % (laya.__version__, time.perf_counter() - t0), flush=True)
+        t1 = time.perf_counter()
         self.agent = laya.load("convaiinnovations/laya")
         self.mode = "local"
-        print("[laya] loaded in-process %s" % laya.__version__, flush=True)
+        print("[laya] ready on %s in %.1fs" % (self.agent.device, time.perf_counter() - t1), flush=True)
 
     def predict(self, state: str) -> tuple[dict, dict]:
         t0 = time.perf_counter()
