@@ -10,8 +10,11 @@ Laya HTTP server that is already running (two loaded models fight over the GPU).
 """
 from __future__ import annotations
 
+import importlib
 import json
 import os
+import platform
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -23,8 +26,16 @@ os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")  # native xet client can stall at 0 bytes
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-HF_CACHE = os.path.expanduser("~/.cache/huggingface/hub/models--convaiinnovations--laya/snapshots")
-if os.path.isdir(HF_CACHE):
+# LAYA_BACKEND=mlx (Apple Silicon default, loads in <1s) or torch (upstream package).
+BACKEND = os.environ.get("LAYA_BACKEND") or ("mlx" if (sys.platform, platform.machine()) == ("darwin", "arm64") else "torch")
+REPO = {"mlx": "aac6fef/laya-mlx", "torch": "convaiinnovations/laya"}
+
+
+def hf_cache(backend: str) -> str:
+    return os.path.expanduser("~/.cache/huggingface/hub/models--%s/snapshots" % REPO[backend].replace("/", "--"))
+
+
+if os.path.isdir(hf_cache(BACKEND)):
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 CHECKPOINT = os.environ.get("LAYA_CHECKPOINT", "english")
@@ -152,7 +163,8 @@ def card(s: dict) -> str:
 class Laya:
     """One loaded checkpoint. `ask(card)` returns (answers, milliseconds)."""
 
-    def __init__(self):
+    def __init__(self, backend: str = BACKEND):
+        self.backend = backend
         self.api = os.environ.get("LAYA_API")
         self.agent = None
         if self.api and self._server_ready():
@@ -171,17 +183,18 @@ class Laya:
         return (health.get("models") or {}).get(CHECKPOINT) == "ready"
 
     def _load_local(self) -> None:
-        if os.path.isdir(HF_CACHE):
-            print("[laya] loading weights from %s (30-90s, no progress bar)" % HF_CACHE, flush=True)
+        cache = hf_cache(self.backend)
+        if os.path.isdir(cache):
+            print("[laya] loading weights from %s (mlx: ~1s, torch: 30-90s, no progress bar)" % cache, flush=True)
         else:
             print("[laya] first run: downloading ~2.3 GB of weights", flush=True)
         t0 = time.perf_counter()
-        import laya
+        laya = importlib.import_module("laya_mlx" if self.backend == "mlx" else "laya")
 
-        print("[laya] imported laya %s in %.1fs, building %s checkpoint..."
-              % (laya.__version__, time.perf_counter() - t0, CHECKPOINT), flush=True)
+        print("[laya] imported %s %s in %.1fs, building %s checkpoint..."
+              % (laya.__name__, laya.__version__, time.perf_counter() - t0, CHECKPOINT), flush=True)
         t1 = time.perf_counter()
-        self.agent = laya.load("convaiinnovations/laya")
+        self.agent = laya.load(REPO[self.backend])
         self.ask("Warm up. The user asked to rename a variable in one file.")
         print("[laya] ready on %s in %.1fs" % (self.agent.device, time.perf_counter() - t1), flush=True)
 

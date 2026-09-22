@@ -4,8 +4,11 @@ version = "0"
 description = "Score Claude Code JSONL sessions with local Laya"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["laya>=0.3.4"]
+dependencies = [
+    "laya>=0.3.4",
+    "laya-mlx>=0.2.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 
 [tool.uv]
 # laya is newer than uv's default exclude-newer window
-exclude-newer-package = { laya = false }
+exclude-newer-package = { laya = false, laya-mlx = false }
