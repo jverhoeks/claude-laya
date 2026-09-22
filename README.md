@@ -4,7 +4,11 @@ Score your local Claude Code sessions with [Laya](https://github.com/NandhaKisho
 
 Standalone. No playground, no HTTP server. `uv sync` installs Laya; the script loads the english checkpoint in-process.
 
-Reads `~/.claude/projects/*/*.jsonl`. Parsing follows [claudecounter](https://github.com/jverhoeks/claudecounter) (real prompts only, tool ids, subagents folded in). Laya labels a short card per session. Counts stay in code.
+Reads `~/.claude/projects/*/*.jsonl`.
+
+- `transcript.py` parses one session into counts and structural flags, following [claudecounter](https://github.com/jverhoeks/claudecounter) (real prompts only, tool ids, subagents folded in).
+- `laya_judge.py` is the Laya part: the questions, the plain-English card Laya reads, the model loader, and the verdict (`model_fit`, `session_ok`).
+- `analyze.py` is the CLI: find files, parse in threads, ask Laya serially, write the outputs.
 
 ## Run
 
@@ -13,6 +17,7 @@ uv sync
 uv run python analyze.py --limit 50          # smoke
 uv run python analyze.py                     # all main sessions
 uv run python analyze.py --days 30
+uv run python test_analyze.py                 # self-check, no model needed
 ```
 
 Python 3.12+. First run downloads open weights (~2.3 GB) into `~/.cache/huggingface` unless they are already there. Hugging Face’s native xet client is disabled (it can stall at 0 bytes); TensorFlow is not imported.
@@ -33,4 +38,4 @@ Resume is percentages, for example:
 - Intent: 40% implement, 22% fix, …
 ```
 
-Predict is one GPU at a time. Parse is threaded (`--parse-workers 4`).
+Laya answers one session at a time (one GPU). Parse is threaded (`--parse-workers 4`). The resume ends with parse and Laya latency percentiles.
