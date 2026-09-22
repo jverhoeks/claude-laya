@@ -16,6 +16,8 @@ import time
 import urllib.error
 import urllib.request
 
+from transcript import FAIL_MIN, FAIL_RATE
+
 # Must be set before `import laya` (done lazily in Laya.__init__).
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
@@ -26,7 +28,7 @@ if os.path.isdir(HF_CACHE):
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 CHECKPOINT = os.environ.get("LAYA_CHECKPOINT", "english")
-SCHEMA = "v2"  # bump to rescore everything when QUESTIONS or judge() change
+SCHEMA = "v3"  # bump to rescore everything when QUESTIONS or judge() change
 
 QUESTIONS = {
     "hardness": {
@@ -233,9 +235,9 @@ def judge(s: dict, answers: dict) -> dict:
 
     cats = {f["category"] for f in s["findings"]}
     issues = []
-    if friction >= 0.5:
+    if friction >= 0.65:  # noul scores cluster at 0.5±0.1; only a clear yes counts
         issues.append("friction")
-    if s["n_errors"] >= 5:
+    if s["n_errors"] >= FAIL_MIN and s["n_errors"] >= FAIL_RATE * s["n_tools"]:
         issues.append("tool_errors")
     if "loop" in cats:
         issues.append("loop")

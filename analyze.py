@@ -63,7 +63,7 @@ def write_resume(rows: list[dict], dest: Path) -> str:
     daypart = lambda r, _: (
         "night" if r["hour"] < 6 else "morning" if r["hour"] < 12 else "afternoon" if r["hour"] < 18 else "evening"
     ) if isinstance(r.get("hour"), int) else "?"
-    flags = Counter(f["category"] for r in rows for f in r.get("findings") or [])
+    flags = Counter(c for r in rows for c in {f["category"] for f in r.get("findings") or []})  # per session
     vague = sum((r.get("prompt_clear") or 1) < 0.4 for r in rows)
     rules = sum((r.get("standing_rule") or 0) >= 0.55 for r in rows)
     parse_ms = [r["timing"]["parse_ms"] for r in rows if r.get("timing")]

@@ -48,7 +48,7 @@ assert s["n_assistant"] == 3, s["n_assistant"]  # msg1 + msg2 + sub, not the str
 assert s["tok_in"] == 117 and s["peak_context"] == 3100
 assert (s["n_read"], s["n_edit"], s["n_bash"]) == (1, 1, 1)
 assert s["shape"] == "ship" and s["n_bypass"] == 1
-assert [f["category"] for f in s["findings"]] == ["waste", "routing"], s["findings"]
+assert [f["category"] for f in s["findings"]] == ["routing"], s["findings"]  # 1 of 3 failed is not waste
 
 assert model_fit(s, "standard", 0.5) == "too_expensive"                    # routing flag
 assert model_fit(dict(s, model="claude-haiku-4-5", findings=[]), "hard", 0.2) == "too_cheap"

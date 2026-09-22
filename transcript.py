@@ -24,8 +24,11 @@ INJECTED = (
 TOOL_TARGET_KEYS = ("command", "file_path", "path", "pattern", "url", "query", "skill", "prompt", "description")
 EDIT_TOOLS = ("Edit", "Write", "NotebookEdit")
 # same starting points as claudecounter DefaultThresholds
-REPEAT_TOOL_N, LOOP_MIN, READ_DUP_N = 3, 3, 2
-SPRAWL_PROMPTS, SPRAWL_HOURS = 60, 4.0
+REPEAT_TOOL_N, LOOP_MIN, READ_DUP_N = 6, 3, 2
+# edits to one file are the job, Read repeats have their own flag, ScheduleWakeup repeats by design
+NOT_REPEAT = EDIT_TOOLS + ("Read", "ScheduleWakeup")
+FAIL_MIN, FAIL_RATE = 3, 0.10  # failed calls flag only when both absolute and relative are high
+SPRAWL_PROMPTS = 60  # ponytail: no hours criterion, wall-clock spans resumed sessions; add active-time if it matters
 ROUTING_MAX_TOKENS, ROUTING_MAX_TOOLS = 20_000, 5
 
 
@@ -183,7 +186,8 @@ def findings(t: Transcript, shape: str, model: str) -> list[dict]:
     flag = lambda category, detail, count: out.append({"category": category, "detail": detail, "count": count})
     tools = t.tools
 
-    if failed := sum(t_["err"] for t_ in tools):
+    failed = sum(t_["err"] for t_ in tools)
+    if failed >= FAIL_MIN and failed >= FAIL_RATE * len(tools):
         flag("waste", "%d failed tool call(s)" % failed, failed)
 
     reads = Counter(x["target"] for x in tools if x["name"] == "Read" and x["target"])
@@ -192,17 +196,17 @@ def findings(t: Transcript, shape: str, model: str) -> list[dict]:
         extra = sum(dup.values()) - len(dup)
         flag("waste", "%d redundant Read(s) across %d file(s)" % (extra, len(dup)), extra)
 
-    calls = Counter((x["name"], x["target"]) for x in tools if x["target"])
+    calls = Counter((x["name"], x["target"]) for x in tools if x["target"] and x["name"] not in NOT_REPEAT)
     (name, target), n = calls.most_common(1)[0] if calls else (("", ""), 0)
     if n >= REPEAT_TOOL_N:
         flag("abuse", "%s %r called %d×" % (name, target[:60], n), n)
 
     for stream, is_sub in (("main", False), ("subagent", True)):
-        if loop := best_loop([x["name"] + ":" + x["target"] for x in tools if x["sub"] == is_sub]):
+        if loop := best_loop([x["name"] + ":" + x["target"] for x in tools if x["sub"] == is_sub and x["name"] not in NOT_REPEAT]):
             flag("loop", "%s stream: %s" % (stream, loop["detail"]), loop["count"])
 
     hours = hours_between(t.start, t.end)
-    if len(t.prompts) >= SPRAWL_PROMPTS or hours >= SPRAWL_HOURS:
+    if len(t.prompts) >= SPRAWL_PROMPTS:
         flag("sprawl", "long session: %d prompts over %.1fh" % (len(t.prompts), hours), len(t.prompts))
 
     if "opus" in model.lower() and t.tok_in + t.tok_out < ROUTING_MAX_TOKENS and len(tools) <= ROUTING_MAX_TOOLS:
