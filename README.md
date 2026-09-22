@@ -20,7 +20,13 @@ uv run python analyze.py --days 30
 uv run python test_analyze.py                 # self-check, no model needed
 ```
 
-Python 3.12+. First run downloads open weights (~2.3 GB) into `~/.cache/huggingface` unless they are already there. Hugging Face’s native xet client is disabled (it can stall at 0 bytes); TensorFlow is not imported.
+Backend: on Apple Silicon the default is [laya-mlx](https://github.com/mizorewww/laya-mlx) (independent MLX port, same weights, loads in about a second). Elsewhere, or with `LAYA_BACKEND=torch`, the upstream PyTorch package is used. To score the already-scored cards with both and print every disagreement plus latency:
+
+```bash
+uv run python compare_backends.py
+```
+
+Python 3.12+. First run downloads open weights (~0.9 GB mlx, ~2.3 GB torch) into `~/.cache/huggingface` unless they are already there. Hugging Face’s native xet client is disabled (it can stall at 0 bytes); TensorFlow is not imported.
 
 Do not load this and another Laya process (for example the playground server) at the same time — they fight over the GPU. If a server is already up and you want to reuse it:
 
